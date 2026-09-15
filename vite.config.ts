@@ -1,8 +1,49 @@
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import fs from "node:fs";
+import path from "node:path";
+import { defineConfig, type Plugin } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
+
+// Serves directory-index HTML for /demos/<slug>/ requests. TanStack Start's dev
+// middleware routes every extension-less path through the React router (so a
+// request to /demos/amor-nails-spa/ 404s before Vite's public/ dir can serve
+// the folder's index.html). This plugin runs first and short-circuits directory
+// requests under /demos/ with the static index.html from public/. It does NOT
+// touch the React homepage ("/") or any other route.
+function serveDemosDirectoryIndex(): Plugin {
+  return {
+    name: "zynthos-serve-demos-directory-index",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        try {
+          if (req.method !== "GET" && req.method !== "HEAD") return next();
+          const url = new URL(req.url ?? "/", "http://localhost");
+          const pathname = decodeURIComponent(url.pathname);
+          if (!pathname.startsWith("/demos/") || !pathname.endsWith("/")) {
+            return next();
+          }
+          const filePath = path.join(server.config.publicDir, pathname, "index.html");
+          if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+            return next();
+          }
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache");
+          if (req.method === "HEAD") {
+            res.end();
+          } else {
+            res.end(fs.readFileSync(filePath));
+          }
+          return;
+        } catch {
+          return next();
+        }
+      });
+    },
+  };
+}
 
 export default defineConfig({
   server: {
@@ -30,6 +71,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    serveDemosDirectoryIndex(),
     tailwindcss(),
     tsConfigPaths({
       projects: ["./tsconfig.json"],

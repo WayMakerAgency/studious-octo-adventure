@@ -42,7 +42,11 @@ for (let attempt = 1; ; attempt++) {
       async fetch(req) {
         const { pathname } = new URL(req.url);
         if (pathname !== "/") {
-          const file = Bun.file(CLIENT_DIR + pathname);
+          // Vite copies public/ into dist/client/. Serve a directory URL's
+          // index.html too, so /demos/<slug>/ resolves to the demo landing page
+          // (matching the dev-server behaviour added in vite.config.ts).
+          const target = pathname.endsWith("/") ? `${pathname}index.html` : pathname;
+          const file = Bun.file(CLIENT_DIR + target);
           if (await file.exists()) return new Response(file);
         }
         return (handler as { fetch: (r: Request) => Response | Promise<Response> }).fetch(req);
